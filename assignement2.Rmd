@@ -1,0 +1,119 @@
+# Exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database
+
+================================================================================================================
+
+
+###Synopsis
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This report involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+
+
+###Data Processing
+
+In this section we will describe the process that we follow to make our data meaningfull.
+
+We would like to extract two results. The first relates to the population health. In greater detail, across the United States, we are interested in finding which types of events are most harmful. The second relates to the economic consequences. Concretely, across the United States, which types of events have the greatest economic consequences.
+
+#####Population Health
+
+Firstly we load the data. Then we split them per event type and we calculated the following metrics:
+1. number that the event occured
+2. how many fatal incidents there were
+3. the percentage of fatal incidents 
+4. how many injuries there were
+5. the percentage of injuries
+
+```{r, results='hide'}
+library(plyr)
+data<-read.csv("repdata-data-StormData.csv.bz2")
+
+cdata <- ddply(data, c("EVTYPE"), summarise, numberofEVENT=length(FATALITIES),sumFatalities = sum(FATALITIES), 
+ meanFatalities = mean(FATALITIES),sumInjuries   = sum(INJURIES),meanInjuries = mean(INJURIES) )
+```
+
+We are intered in the percentage of fatal incidents. We assume that the higher the % of fatal incidents the more harmful is for public health.
+We filtered the data in order to have only events that occured more than 100 times. The reason that we did it is to have more valid results. 
+
+```{r, results='hide'}
+newdata<-subset(cdata, cdata$numberofEVENT>100)
+
+newdata<-newdata[order(-newdata$meanFatalities, -newdata$meanInjuries),]
+```
+
+
+Then we took the first 20 events
+
+```{r, }
+newdata[1:20,]
+```
+
+
+#####Economic Consequencies
+
+The process for the economic consequencies is the similar with the above. Firstly, we split the data per event and we calculate our metrics.
+Then we found the units of measurement for the damnage. the variable 'propdmgexp' has all the units. We are only interested in B, M, K.
+Then we want to add the two costs: property and corp
+But we cannot do that immediately since some of them are in different units.
+
+```{r, results='hide'}
+library(plyr)
+
+s<-split(data, data$PROPDMGEXP)
+
+propdmgexp<-names(s)
+
+sub<-subset(data, data$PROPDMGEXP=="B" | data$PROPDMGEXP=="M" | data$PROPDMGEXP=="K" | data$CROPDMGEXP=="B" | data$CROPDMGEXP=="M" | data$CROPDMGEXP=="K"  )
+
+
+```
+
+Then we want to add the two costs: property and corp
+But we cannot do that immediately since some of them are in different units.We will use the function f which adds the two columns conditionally with the units.We use mapply in order to run the function for every row of the dataset.
+
+Then i use ddply in order to take per event the sum of cost and the mean of cost.
+
+```{r, results='hide'}
+f<-function(x, y, z, w) (
+  if (x=="B" & y=="B") { z+w }
+  else if ( x=="M" & y=="B") { (z/1000)+ w }
+  else if (x=="K" & y=="B") { (z/1000000)+ w }
+  else if (x=="B" & y=="M") { (w/1000)+z }
+  else if (x=="B" & y=="K") { (w/1000000)+ z}
+  else if (x=="B") { z}
+  else   w
+  )
+
+sub$total<-mapply(f, sub$PROPDMGEXP, sub$CROPDMGEXP, sub$PROPDMG, sub$CROPDMG)
+
+newedata <- ddply(sub, c("EVTYPE"), summarise, numberofEVENT=length(FATALITIES),sumtotal = sum(total), meantotal=mean(total) )
+
+newedata<-subset(newedata, newedata$numberofEVENT>100)
+
+newedata<-newedata[order(-newedata$meantotal),]
+
+```
+The events with the largest economic consequencies are
+
+
+```{r, }
+newedata[1:20,]
+```
+
+
+###Results
+
+The following chart shows the first 20 more fatal events.
+
+
+```{r, }
+barplot(newdata[1:20, ]$meanFatalities*100, main="Fatalities % per Event",xlab="Event", names.arg=newdata[1:20, ]$EVTYPE, ylab="Fatalities % ")
+```
+
+
+The next chart shows the first 20 events with the  greatest economic consequences
+
+```{r, }
+barplot(newedata[1:20, ]$meantotal, main="Mean cost per Event",xlab="Event", names.arg=newdata[1:20, ]$EVTYPE, ylab="mean cost")
+        ```
